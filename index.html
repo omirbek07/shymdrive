@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Shymkent Driving Simulator - Mobile</title>
+    <title>Shymkent Driving Simulator - Mobile Fix</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; touch-action: none; }
         canvas { display: block; }
-        #info { position: absolute; top: 10px; left: 10px; color: #fff; font-family: sans-serif; font-size: 14px; font-weight: bold; background: rgba(0,0,0,0.5); padding: 8px; border-radius: 8px; pointer-events: none; z-index: 10; }
+        #info { position: absolute; top: 10px; left: 10px; color: #fff; font-family: sans-serif; font-size: 14px; font-weight: bold; background: rgba(0,0,0,0.5); padding: 8px; border-radius: 8px; pointer-events: none; z-index: 10; max-width: 80%; }
+        #error-log { color: #ff5555; }
         
         /* Мобильное управление */
         .controls-container { position: absolute; bottom: 30px; width: 100%; display: flex; justify-content: space-between; padding: 0 20px; box-sizing: border-box; z-index: 10; }
@@ -16,12 +17,12 @@
         .btn:active { background: rgba(255, 255, 255, 0.8); color: #000; }
     </style>
 
-    <!-- Загружаем библиотеки как глобальные переменные -->
+    <!-- Загружаем библиотеки -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
 </head>
 <body>
-    <div id="info">Тулпар 3D<br>FPS: <span id="fps">0</span></div>
+    <div id="info">Тулпар 3D<br>FPS: <span id="fps">0</span><br><span id="error-log"></span></div>
     
     <div class="controls-container">
         <div class="d-pad">
@@ -30,15 +31,18 @@
         </div>
         <div class="action-pad">
             <div id="btn-brake" class="btn">🛑</div>
-            <div id="btn-gas" class="btn">Вперед</div>
+            <div id="btn-gas" class="btn">Газ</div>
         </div>
     </div>
     
     <script>
-        // Проверяем, загрузились ли библиотеки
+        // ВЫВОДИМ ОШИБКИ НА ЭКРАН ТЕЛЕФОНА
+        window.addEventListener('error', function(e) {
+            document.getElementById('error-log').innerHTML += 'Ошибка: ' + e.message + ' (строка ' + e.lineno + ')<br>';
+        });
+
         if (typeof THREE === 'undefined' || typeof CANNON === 'undefined') {
-            document.getElementById('info').innerHTML = 'Ошибка загрузки библиотек. Проверьте интернет.';
-            throw new Error('Библиотеки не загружены');
+            throw new Error('Библиотеки не загрузились (проверьте интернет)');
         }
 
         // --- 1. ИНИЦИАЛИЗАЦИЯ THREE.JS ---
@@ -67,14 +71,12 @@
         world.addContactMaterial(new CANNON.ContactMaterial(wheelMat, groundMat, { friction: 0.3, restitution: 0 }));
 
         // --- 3. СОЗДАНИЕ МИРА ---
-        // Земля (Физика)
         const groundShape = new CANNON.Plane();
         const groundBody = new CANNON.Body({ mass: 0, material: groundMat });
         groundBody.addShape(groundShape);
         groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
         world.addBody(groundBody);
 
-        // Земля (Графика)
         const planeMesh = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshLambertMaterial({ color: 0x55aa55 }));
         planeMesh.rotation.x = -Math.PI / 2;
         planeMesh.receiveShadow = true;
@@ -85,31 +87,29 @@
         scene.add(grid);
 
         // --- 4. АВТОМОБИЛЬ ---
-        // Шасси (Физика)
         const chassisShape = new CANNON.Box(new CANNON.Vec3(1, 0.5, 2));
         const chassisBody = new CANNON.Body({ mass: 1500, material: groundMat });
         chassisBody.addShape(chassisShape);
         chassisBody.position.set(0, 4, 0);
 
         const vehicle = new CANNON.RaycastVehicle({ chassisBody: chassisBody });
-        const wheelOptions = {
-            radius: 0.5, directionLocal: new CANNON.Vec3(0, -1, 0), suspensionStiffness: 30, suspensionRestLength: 0.3,
-            frictionSlip: 5, dampingRelaxation: 2.3, dampingCompression: 4.4, maxSuspensionForce: 100000, rollInfluence: 0.01,
-            axleLocal: new CANNON.Vec3(-1, 0, 0), maxSuspensionTravel: 0.3, customSlidingRotationalSpeed: -30, useCustomSlidingRotationalSpeed: true
-        };
-
+        
         const positions = [ [-1, 0, -1.2], [1, 0, -1.2], [-1, 0, 1.2], [1, 0, 1.2] ];
         positions.forEach(pos => {
-            wheelOptions.chassisConnectionPointLocal.set(pos[0], pos[1], pos[2]);
+            // Создаем уникальные настройки для КАЖДОГО колеса
+            const wheelOptions = {
+                radius: 0.5, directionLocal: new CANNON.Vec3(0, -1, 0), suspensionStiffness: 30, suspensionRestLength: 0.3,
+                frictionSlip: 5, dampingRelaxation: 2.3, dampingCompression: 4.4, maxSuspensionForce: 100000, rollInfluence: 0.01,
+                axleLocal: new CANNON.Vec3(-1, 0, 0), maxSuspensionTravel: 0.3, customSlidingRotationalSpeed: -30, useCustomSlidingRotationalSpeed: true,
+                chassisConnectionPointLocal: new CANNON.Vec3(pos[0], pos[1], pos[2])
+            };
             vehicle.addWheel(wheelOptions);
         });
         vehicle.addToWorld(world);
 
-        // Шасси (Графика)
         const carMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 4), new THREE.MeshLambertMaterial({ color: 0xcc2222 }));
         carMesh.castShadow = true; scene.add(carMesh);
 
-        // Колеса (Графика)
         const wheelGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.4, 16);
         wheelGeo.rotateZ(Math.PI / 2);
         const wheelMatRender = new THREE.MeshLambertMaterial({ color: 0x333333 });
@@ -123,9 +123,9 @@
 
         const bindTouch = (id, prop) => {
             const el = document.getElementById(id);
+            if (!el) return;
             el.addEventListener('touchstart', (e) => { e.preventDefault(); controls[prop] = true; });
             el.addEventListener('touchend', (e) => { e.preventDefault(); controls[prop] = false; });
-            // Для тестирования на ПК
             el.addEventListener('mousedown', (e) => { e.preventDefault(); controls[prop] = true; });
             el.addEventListener('mouseup', (e) => { e.preventDefault(); controls[prop] = false; });
         };
@@ -137,18 +137,23 @@
         // --- 6. ИГРОВОЙ ЦИКЛ ---
         const maxSteer = 0.5, maxForce = 2500, brakeForce = 50;
         let lastTime = performance.now();
+        let frames = 0;
         const fpsEl = document.getElementById('fps');
 
         function animate(time) {
             requestAnimationFrame(animate);
-            const dt = (time - lastTime) / 1000;
-            lastTime = time;
-            if(Math.random() < 0.1 && dt > 0) fpsEl.innerText = Math.round(1/dt);
+            
+            // Считаем FPS безопасно
+            frames++;
+            if (time - lastTime >= 1000) {
+                fpsEl.innerText = frames;
+                frames = 0;
+                lastTime = time;
+            }
 
             let engineForce = 0, steeringValue = 0;
             if (controls.forward) engineForce = -maxForce;
             
-            // Тормоз
             if (controls.brake) {
                 vehicle.setBrake(brakeForce, 0); vehicle.setBrake(brakeForce, 1);
                 vehicle.setBrake(brakeForce, 2); vehicle.setBrake(brakeForce, 3);
@@ -157,7 +162,6 @@
                 vehicle.setBrake(0, 2); vehicle.setBrake(0, 3);
             }
             
-            // Руль
             if (controls.left) steeringValue = maxSteer;
             if (controls.right) steeringValue = -maxSteer;
 
@@ -166,29 +170,30 @@
             vehicle.setSteeringValue(steeringValue, 0);
             vehicle.setSteeringValue(steeringValue, 1);
 
-            // Физика
-            world.step(1 / 60, dt, 3);
+            // ИСПОЛЬЗУЕМ ЖЕСТКИЙ ШАГ ВРЕМЕНИ, ЧТОБЫ ИЗБЕЖАТЬ СКАЧКОВ (NaN)
+            world.step(1 / 60);
 
-            // Синхронизация графики и физики
-            carMesh.position.copy(chassisBody.position);
-            carMesh.quaternion.copy(chassisBody.quaternion);
+            // Синхронизация графики
+            if (!isNaN(chassisBody.position.x)) {
+                carMesh.position.copy(chassisBody.position);
+                carMesh.quaternion.copy(chassisBody.quaternion);
 
-            for (let i = 0; i < vehicle.wheelInfos.length; i++) {
-                vehicle.updateWheelTransform(i);
-                const transform = vehicle.wheelInfos[i].worldTransform;
-                wheelMeshes[i].position.copy(transform.position);
-                wheelMeshes[i].quaternion.copy(transform.quaternion);
+                for (let i = 0; i < vehicle.wheelInfos.length; i++) {
+                    vehicle.updateWheelTransform(i);
+                    const transform = vehicle.wheelInfos[i].worldTransform;
+                    wheelMeshes[i].position.copy(transform.position);
+                    wheelMeshes[i].quaternion.copy(transform.quaternion);
+                }
+
+                // Камера
+                const camOffset = new THREE.Vector3(0, 4, 10).applyQuaternion(carMesh.quaternion);
+                camera.position.lerp(carMesh.position.clone().add(camOffset), 0.1);
+                camera.lookAt(carMesh.position);
             }
-
-            // Камера
-            const camOffset = new THREE.Vector3(0, 4, 10).applyQuaternion(carMesh.quaternion);
-            camera.position.lerp(carMesh.position.clone().add(camOffset), 0.1);
-            camera.lookAt(carMesh.position);
 
             renderer.render(scene, camera);
         }
         
-        // Запуск
         animate(performance.now());
 
         window.addEventListener('resize', () => {
